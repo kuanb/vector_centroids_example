@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>Add a GeoJSON polygon</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v1.3.2/mapbox-gl.js'></script>
+    <script src='https://npmcdn.com/@turf/turf/turf.min.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v1.3.2/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body { margin:0; padding:0; }
+        #map { position:absolute; top:0; bottom:0; width:100%; }
+    </style>
+</head>
+<body>
+
+<div id='map'></div>
+
+<script>
+
+// imagine this being set by user (what they want to extrude on)
+const targetVariable = 'intersection_density';
+
+// queries the rendered data to determine what to
+// apply the extrusion operation to
+function updateCentroidsSet(map) {
+    const featsRaw = getVisibleParcelData(map);
+
+    const feats = featsRaw.map(feat => {
+        feat['geometry'] = turf.buffer(
+            turf.centroid(feat), 50, {units: 'feet'});
+
+        const endFeat = {
+            'geometry': feat._geometry.geometry,
+            'properties': {},
+            'type': 'Feature',
+        };
+        endFeat['properties'][targetVariable] = feat.properties[targetVariable];
+
+        return endFeat;
+    });
+
+    return feats;
+}
+
+function getVisibleParcelData(map) {
+    return map.queryRenderedFeatures().filter(
+        ea => ea.layer.id == 'parcels');
+}
+
+// instantiate map
+mapboxgl.accessToken = 'pk.eyJ1Ijoia3VhbmIiLCJhIjoidXdWUVZ2USJ9.qNKXXP6z9_fKA8qrmpOi6Q';
+var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/light-v10',
+    center: [ -122.325383438952997, 47.603320574598492 ],
+    pitch: 60, // pitch in degrees
+    bearing: 40, // bearing in degrees
+    zoom: 14
+});
+
+// some rules for coloring breaks
+const breaksRules = [
+    0, '#F2F12D',
+    100, '#EED322',
+    150, '#E6B71E',
+    175, '#DA9C20',
+    200, '#CA8323',
+    210, '#B86B25',
+    220, '#A25626',
+    230, '#8B4225',
+    250, '#723122'
+];
+
+// create a global to reference/inspect
+const parcelCs = {
+    'type': 'FeatureCollection',
+    'features': []
+};
+
+map.on('load', function () {
+
+    map.addLayer({
+        'id': 'parcels',
+        'type': 'fill',
+        'source': {
+            type: 'vector',
+            url: 'mapbox://kuanb.ck12e4j3l0ngw2onty0hppbgv-24p9x'
+        },
+        'source-layer': 'sample_parcels',
+        'layout': {},
+        'paint': {
+            'fill-color': [
+                'interpolate',
+                ['linear'],
+                ['get', targetVariable],
+                ...breaksRules,
+            ],
+            'fill-opacity': 0.75
+        }
+    });
+
+    // initialize the dynamically extruded layer (which will
+    // likely be initially empty)
+    parcelCs['features'] = updateCentroidsSet(map);
+    map.addSource('centroids', { type: 'geojson', data: parcelCs });
+    map.addLayer({
+        'id': 'centroids',
+        'type': 'fill-extrusion',
+        'source': 'centroids',
+        'layout': {},
+        'paint': {
+            'fill-extrusion-color': [
+                'interpolate',
+                ['linear'],
+                ['get', targetVariable],
+                ...breaksRules,
+            ],
+            'fill-extrusion-opacity': 0.9,
+            'fill-extrusion-height': [
+                '/',
+                [
+                    '^',
+                    ['get', targetVariable],
+                    2],
+                100],
+        }
+    });
+
+    // hack to fire the update of the extrude data once after source load
+    setTimeout(() => {
+        parcelCs['features'] = updateCentroidsSet(map);
+        map.getSource('centroids').setData(parcelCs);
+    }, 500);
+
+});
+
+// on a regular basis, when user moves, add more coordinates
+// from the saved list and update the map
+map.on('moveend', event => {
+    // quick and dirty guesstimate that the visible set of geometries
+    // hasn't changed (and if it hasn't no need to recompute centroids)
+    const vpd = getVisibleParcelData(map);
+    if (vpd.length === parcelCs['features'].length) {
+    } else {
+        parcelCs['features'] = updateCentroidsSet(map);
+        map.getSource('centroids').setData(parcelCs);
+    }
+});
+
+</script>
+
+</body>
+</html>
