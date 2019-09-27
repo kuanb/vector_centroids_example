@@ -44,8 +44,8 @@ function updateCentroidsSet(map) {
 }
 
 function getVisibleParcelData(map) {
-    return map.queryRenderedFeatures().filter(
-        ea => ea.layer.id == 'parcels');
+    return map.queryRenderedFeatures(
+        {layers: ['parcels'], validate: false});
 }
 
 // instantiate map
