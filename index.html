@@ -102,7 +102,7 @@ map.on('load', function () {
 
     // initialize the dynamically extruded layer (which will
     // likely be initially empty)
-    parcelCs['features'] = updateCentroidsSet(map);
+    parcelCs.features = updateCentroidsSet(map);
     map.addSource('centroids', { type: 'geojson', data: parcelCs });
     map.addLayer({
         'id': 'centroids',
@@ -128,10 +128,15 @@ map.on('load', function () {
     });
 
     // hack to fire the update of the extrude data once after source load
-    setTimeout(() => {
-        parcelCs['features'] = updateCentroidsSet(map);
-        map.getSource('centroids').setData(parcelCs);
-    }, 500);
+    map.on('sourcedata', () => {
+        if (updateCentroidsSet(map).length > 50) {
+            parcelCs.features = updateCentroidsSet(map);
+            map.getSource('centroids').setData(parcelCs);
+
+            // turn off sourcedata listener if its no longer needed
+            map.off('sourcedata');
+        }
+    });
 
 });
 
@@ -141,9 +146,9 @@ map.on('moveend', event => {
     // quick and dirty guesstimate that the visible set of geometries
     // hasn't changed (and if it hasn't no need to recompute centroids)
     const vpd = getVisibleParcelData(map);
-    if (vpd.length === parcelCs['features'].length) {
+    if (vpd.length === parcelCs.features.length) {
     } else {
-        parcelCs['features'] = updateCentroidsSet(map);
+        parcelCs.features = updateCentroidsSet(map);
         map.getSource('centroids').setData(parcelCs);
     }
 });
